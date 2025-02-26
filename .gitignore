@@ -1,0 +1,16 @@
+# Ignore Python bytecode files
+__pycache__/
+*.py[cod]
+
+# Ignore the SQLite database file
+file_store.db
+
+# Ignore the directory where files are stored
+files/
+
+# Ignore the configuration file with sensitive information
+config.py
+
+# Ignore virtual environment directories
+venv/
+env/
