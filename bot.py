@@ -1,5 +1,7 @@
 import os
 import requests
+import time
+import threading
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -33,6 +35,7 @@ if not os.path.exists(FILE_STORAGE_DIR):
     os.makedirs(FILE_STORAGE_DIR)
 
 url_shortener_enabled = False
+auto_delete_timer = 0  # Default timer in seconds
 
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('Welcome to the File Store Bot! Send me any file to store it.')
@@ -54,65 +57,57 @@ def handle_document(update: Update, context: CallbackContext) -> None:
     else:
         update.message.reply_text(f'File "{update.message.document.file_name}" has been stored! Link: {new_file.url}')
 
+    # Start auto-delete timer
+    if auto_delete_timer > 0:
+        threading.Thread(target=auto_delete_message, args=(update.message.chat_id, update.message.message_id)).start()
+
 def shorten_url(long_url):
     response = requests.post(URL_SHORTENER_API, json={'long_url': long_url, 'api_key': URL_SHORTENER_API_KEY})
     if response.status_code == 200:
         return response.json().get('short_url', long_url)
     return long_url
 
-def edit_file(update: Update, context: CallbackContext) -> None:
-    file_id = int(context.args[0])
-    new_title = context.args[1]
-    new_description = context.args[2]
+def auto_delete_message(chat_id, message_id):
+    time.sleep(auto_delete_timer)
+    context.bot.delete_message(chat_id=chat_id, message_id=message_id)
 
-    session = Session()
-    file_record = session.query(FileRecord).filter(FileRecord.id == file_id).first()
-    if file_record:
-        file_record.title = new_title
-        file_record.description = new_description
-        session.commit()
-        update.message.reply_text(f'File updated: {file_record.title}')
-    else:
-        update.message.reply_text('File not found.')
-    session.close()
+def set_auto_delete(update: Update, context: CallbackContext) -> None:
+    global auto_delete_timer
+    try:
+        auto_delete_timer = int(context.args[0])
+        update.message.reply_text(f'Auto-delete timer set to {auto_delete_timer} seconds.')
+    except (IndexError, ValueError):
+        update.message.reply_text('Usage: /setautodelete <seconds>')
+
+def edit_file(update: Update, context: CallbackContext) -> None:
+    try:
+        file_id = int(context.args[0])
+        new_title = context.args[1]
+        new_description = context.args[2]
+
+        session = Session()
+        file_record = session.query(FileRecord).filter(FileRecord.id == file_id).first()
+        if file_record:
+            file_record.title = new_title
+            file_record.description = new_description
+            session.commit()
+            update.message.reply_text(f'File updated: {file_record.title}')
+        else:
+            update.message.reply_text('File not found.')
+        session.close()
+    except (IndexError, ValueError):
+        update.message.reply_text('Usage: /edit <file_id> <new_title> <new_description>')
 
 def delete_file(update: Update, context: CallbackContext) -> None:
-    file_id = int(context.args[0])
-    session = Session()
-    file_record = session.query(FileRecord).filter(FileRecord.id == file_id).first()
-    if file_record:
-        session.delete(file_record)
-        session.commit()
-        update.message.reply_text('File deleted.')
-    else:
-        update.message.reply_text('File not found.')
-    session.close()
-
-def set_access(update: Update, context: CallbackContext) -> None:
-    file_id = int(context.args[0])
-    public_access = context.args[1].lower() == 'true'
-    session = Session()
-    file_record = session.query(FileRecord).filter(FileRecord.id == file_id).first()
-    if file_record:
-        file_record.public_access = public_access
-        session.commit()
-        update.message.reply_text('Access updated.')
-    else:
-        update.message.reply_text('File not found.')
-    session.close()
-
-def toggle_url_shortener(update: Update, context: CallbackContext) -> None:
-    global url_shortener_enabled
-    url_shortener_enabled = not url_shortener_enabled
-    status = "enabled" if url_shortener_enabled else "disabled"
-    update.message.reply_text(f'URL shortener is now {status}.')
-
-def main() -> None:
-    updater = Updater(TOKEN)
-
-    dispatcher = updater.dispatcher
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(MessageHandler(Filters.document, handle_document))
-    dispatcher.add_handler(CommandHandler("edit", edit_file))
-    dispatcher.add_handler(CommandHandler("delete", delete_file))
-    dispatcher.add_handler(CommandHandler("set_access", set_access))
+    try:
+        file_id = int(context.args[0])
+        session = Session()
+        file_record = session.query(FileRecord).filter(FileRecord.id == file_id).first()
+        if file_record:
+            session.delete(file_record)
+            session.commit()
+            update.message.reply_text('File deleted.')
+        else:
+            update.message.reply_text('File not found.')
+        session.close()
+   
