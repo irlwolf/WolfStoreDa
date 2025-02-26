@@ -1,0 +1,6 @@
+telegram-file-store-bot/
+│
+├── bot.py
+├── config.py
+├── requirements.txt
+└── README.md
